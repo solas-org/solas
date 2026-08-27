@@ -10,8 +10,10 @@ using Solas.Transform.MathExtensions;
 namespace Solas.Render.Logics;
 
 [Update]
-public class SceneCameraLogic : Logic, IInitializable
+public class SceneCameraLogic : ILogic, IInitializable
 {
+    public Entity Entity { get; set; }
+    
     private float _moveSpeed = 10.0f;
     private float _mouseSensitivity = 0.1f;
     private float _zoomSensitivity = 2.0f;

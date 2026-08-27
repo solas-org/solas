@@ -22,7 +22,7 @@ public sealed class LogicAddingRegistrationGenerator : IIncrementalGenerator
         {
             var (compilation, syntaxes) = source;
             var assemblyName = compilation.AssemblyName ?? "UnknownAssembly";
-            var logicBaseType = compilation.GetTypeByMetadataName("Solas.Components.Logic");
+            var logicBaseType = compilation.GetTypeByMetadataName("Solas.Components.ILogic");
 
             if (logicBaseType == null) return;
 

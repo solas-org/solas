@@ -1,4 +1,6 @@
-﻿using System.Collections.Immutable;
+﻿using System;
+using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -9,12 +11,17 @@ namespace Solas.SourceGenerators.Analysers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class OwnerProtectionAnalyzer : DiagnosticAnalyzer
 {
-    public const string DiagnosticId = "SOLAS0001";
-    private const string Title = "Manual edit of 'Entity' property in IData is not allowed";
-    private const string MessageFormat = "'Entity' property in IData can be modified only in Solas Engine Core";
+    private const string DiagnosticId = "SOLAS0001";
+    private const string Title = "Manual edit of 'Entity' property is not allowed";
+    private const string MessageFormat = "'Entity' property can be modified only inside allowed Solas namespaces";
     private const string Category = "Architecture";
     
-    private const string CoreAssemblyName = "Solas.Core"; 
+    private static readonly string[] _allowedNamespaces = 
+    [
+        "Solas.Components",
+        "Solas.ComponentUtils",
+        "Solas.Containers"
+    ];
 
     private static readonly DiagnosticDescriptor _rule = new(
         DiagnosticId, Title, MessageFormat, Category, 
@@ -33,13 +40,15 @@ public class OwnerProtectionAnalyzer : DiagnosticAnalyzer
 
     private void AnalyzeAssignment(SyntaxNodeAnalysisContext context)
     {
-        if (context.Compilation.AssemblyName == CoreAssemblyName) return;
+        if (IsInAllowedNamespace(context)) return;
 
         var assignment = (AssignmentExpressionSyntax)context.Node;
-        
-        if (assignment.Left is MemberAccessExpressionSyntax { Name.Identifier.Text: "Entity" } memberAccess)
+        var symbolInfo = context.SemanticModel.GetSymbolInfo(assignment.Left);
+        var symbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+
+        if (symbol is IPropertySymbol property && property.Name == "Entity")
         {
-            if (IsTargetingIData(memberAccess.Expression, context.SemanticModel))
+            if (IsComponentType(property.ContainingType))
             {
                 context.ReportDiagnostic(Diagnostic.Create(_rule, assignment.GetLocation()));
             }
@@ -48,38 +57,47 @@ public class OwnerProtectionAnalyzer : DiagnosticAnalyzer
 
     private void AnalyzeWithExpression(SyntaxNodeAnalysisContext context)
     {
-        if (context.Compilation.AssemblyName == CoreAssemblyName) return;
+        if (IsInAllowedNamespace(context)) return;
 
         var withExpression = (WithExpressionSyntax)context.Node;
         
         foreach (var initializer in withExpression.Initializer.Expressions)
         {
-            if (initializer is AssignmentExpressionSyntax { Left: IdentifierNameSyntax { Identifier.Text: "Entity" } })
+            if (initializer is AssignmentExpressionSyntax assignment)
             {
-                if (IsTargetingIData(withExpression.Expression, context.SemanticModel))
+                var symbolInfo = context.SemanticModel.GetSymbolInfo(assignment.Left);
+                var symbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+
+                if (symbol is IPropertySymbol property && property.Name == "Entity")
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(_rule, initializer.GetLocation()));
+                    if (IsComponentType(property.ContainingType))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(_rule, initializer.GetLocation()));
+                    }
                 }
             }
         }
     }
 
-    private static bool IsTargetingIData(ExpressionSyntax expression, SemanticModel semanticModel)
+    private static bool IsInAllowedNamespace(SyntaxNodeAnalysisContext context)
     {
-        var typeInfo = semanticModel.GetTypeInfo(expression);
-        var typeSymbol = typeInfo.Type;
+        var enclosingSymbol = context.SemanticModel.GetEnclosingSymbol(context.Node.SpanStart);
+        var ns = enclosingSymbol?.ContainingNamespace?.ToDisplayString();
 
+        if (string.IsNullOrEmpty(ns)) return false;
+
+        return _allowedNamespaces.Any(allowed => 
+            ns.Equals(allowed, StringComparison.Ordinal) || 
+            ns.StartsWith(allowed + ".", StringComparison.Ordinal));
+    }
+
+    private static bool IsComponentType(INamedTypeSymbol? typeSymbol)
+    {
         if (typeSymbol == null) return false;
-        
-        if (typeSymbol is { Name: "IData", TypeKind: TypeKind.Interface })
+
+        if (typeSymbol.Name is "IData" or "ILogic")
             return true;
 
-        foreach (var @interface in typeSymbol.AllInterfaces)
-        {
-            if (@interface.Name == "IData")
-                return true;
-        }
-
-        return false;
+        return typeSymbol.AllInterfaces.Any(i => i.Name is "IData" or "ILogic");
     }
 }

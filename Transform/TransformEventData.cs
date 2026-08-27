@@ -2,7 +2,7 @@
 
 namespace Solas.Transform;
 
-public struct TransformEventData()
+public class TransformEventData()
 {
     public Action<TransformData> CreateDataEvent = delegate { };
     public Action<TransformData> DisposeDataEvent = delegate { };

@@ -8,8 +8,10 @@ using Solas.Transform.MathExtensions;
 
 namespace Solas.Render.Logics;
 
-public partial class MeshRenderLogic : Logic, IInitializable
+public class MeshRenderLogic : ILogic, IInitializable
 {
+    public Entity Entity { get; set; }
+    
     [Inject]
     public Mesh? Mesh
     {
@@ -49,7 +51,7 @@ public partial class MeshRenderLogic : Logic, IInitializable
         return scaleMat * rotationMat * translationMat;
     }
 
-    public override void Dispose()
+    public void Dispose()
     {
         RenderLogicEventHandler.Unregister(this);
     }

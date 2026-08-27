@@ -90,7 +90,7 @@ internal class InitializeSystem(Space space)
         return allTasks;
     }
 
-    private async Task InitializeLogic(Logic logic)
+    private async Task InitializeLogic(ILogic logic)
     {
         if (logic is IInitializable init)
         {

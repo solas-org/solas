@@ -30,7 +30,7 @@ public sealed class SerializationGenerator : IIncrementalGenerator
             var assemblyName = compilation.AssemblyName ?? "UnknownAssembly";
 
             var dataInterface = compilation.GetTypeByMetadataName("Solas.Components.IData");
-            var logicBaseType = compilation.GetTypeByMetadataName("Solas.Components.Logic");
+            var logicBaseType = compilation.GetTypeByMetadataName("Solas.Components.ILogic");
             var referenceableInterface = compilation.GetTypeByMetadataName("Solas.Interfaces.IReferenceable");
 
             var customSerializerInterface =

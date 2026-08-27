@@ -13,8 +13,9 @@ using Solas.Transform;
 namespace Solas.Render.Logics;
 
 [Update, LateUpdate]
-public class RenderLogic : Logic
+public class RenderLogic : ILogic
 {
+    public Entity Entity { get; set; }
     private WindowSettings _windowSettings = null!;
     private IWindow _window = null!;
     private IRenderer _renderer = null!;
@@ -116,7 +117,7 @@ public class RenderLogic : Logic
         }
     }
 
-    public override void Dispose()
+    public void Dispose()
     {
         if (_isDestroyed) return;
         _renderer.Dispose();

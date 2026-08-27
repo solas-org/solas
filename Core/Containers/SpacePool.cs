@@ -24,23 +24,32 @@ internal class SpacePool
             allContainers.AddRange(EngineContext.EntityPool.GetComponentPoolsInSpace(_localSpaces[i]));
         }
 
-        allContainers.AddRange(EngineContext.EntityPool.GetComponentPoolsInSpace(WorldContext.GlobalSpace));
+        if (WorldContext.GlobalSpace != null)
+        {
+            allContainers.AddRange(EngineContext.EntityPool.GetComponentPoolsInSpace(WorldContext.GlobalSpace));
+        }
 
         var span = CollectionsMarshal.AsSpan(allContainers);
         for (int i = 0; i < runners.Length; i++)
         {
-            runners[i].InjectPools(span);
+            runners[i]?.InjectPools(span);
         }
     }
 
     internal void RunUpdateSystemInAllSpaces(IUpdateSystem system)
     {
+        if (system == null)
+            throw new ArgumentNullException(nameof(system), "Cannot execute update on a null IUpdateSystem.");
+
         for (int i = 0; i < _localSpaces.Count; i++)
         {
             system.Update(_localSpaces[i]);
         }
 
-        system.Update(WorldContext.GlobalSpace);
+        if (WorldContext.GlobalSpace != null)
+        {
+            system.Update(WorldContext.GlobalSpace);
+        }
     }
 
     #endregion
@@ -49,33 +58,63 @@ internal class SpacePool
 
     internal void RegisterSpaceFolder(SpaceFolder folder, Space space)
     {
-        if (!_spaceFolders.ContainsKey(space))
-            _spaceFolders.Add(space, []);
-        _spaceFolders[space].Add(folder);
+        if (folder == null)
+            throw new ArgumentNullException(nameof(folder), "Cannot register a null SpaceFolder.");
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot register folder to a null Space.");
+
+        if (!_spaceFolders.TryGetValue(space, out var list))
+        {
+            list = [];
+            _spaceFolders[space] = list;
+        }
+
+        list.Add(folder);
     }
 
     internal void UnregisterSpaceFolder(SpaceFolder folder, Space space)
     {
-        _spaceFolders[space].Remove(folder);
+        if (folder == null || space == null) return;
+
+        if (_spaceFolders.TryGetValue(space, out var folders))
+        {
+            folders.Remove(folder);
+        }
     }
 
     internal SpaceFolder GetSpaceFolderWith(Guid guid, Space space)
     {
-        return _spaceFolders[space].FirstOrDefault(x => x.Id == guid);
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Space cannot be null when querying SpaceFolder.");
+
+        return _spaceFolders.TryGetValue(space, out var folders)
+            ? folders.FirstOrDefault(x => x.Id == guid)
+            : null;
     }
 
     internal SpaceFolder GetSpaceFolderWith(Guid guid, Guid spaceId)
     {
-        return _spaceFolders[GetSpace(spaceId)].Find(x => x.Id == guid);
+        var space = GetSpace(spaceId);
+        if (space == null)
+            throw new KeyNotFoundException($"Space with ID '{spaceId}' was not found.");
+
+        return GetSpaceFolderWith(guid, space);
     }
 
     internal IEnumerable<SpaceFolder> GetSpaceFoldersWith(List<Guid> guids, Space space)
     {
-        return _spaceFolders[space].Where(x => guids.Contains(x.Id));
+        if (guids == null || space == null) return [];
+
+        return _spaceFolders.TryGetValue(space, out var folders)
+            ? folders.Where(x => guids.Contains(x.Id))
+            : [];
     }
 
     internal List<SpaceFolder> GetAllSpaceFoldersIn(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Space cannot be null.");
+
         return _spaceFolders.TryGetValue(space, out var folders) ? folders : [];
     }
 
@@ -85,24 +124,29 @@ internal class SpacePool
 
     internal void SetPaths(string localSpacesFolder)
     {
+        if (string.IsNullOrWhiteSpace(localSpacesFolder))
+            throw new ArgumentException("Local spaces folder path cannot be null or empty.", nameof(localSpacesFolder));
+
+        if (!Directory.Exists(localSpacesFolder))
+            throw new DirectoryNotFoundException($"Directory '{localSpacesFolder}' does not exist.");
+
         _localSpacesPaths = Directory.GetFiles(localSpacesFolder, "*.space", SearchOption.AllDirectories);
     }
 
-    internal string[] GetPaths()
-    {
-        return _localSpacesPaths;
-    }
+    internal string[] GetPaths() => _localSpacesPaths;
 
     internal IEnumerable<Task> InitializeLocalSpaces()
     {
-        return _localSpaces.SelectMany(x => x.Initializer.InitializeDependencies());
+        return _localSpaces.Where(x => x?.Initializer != null)
+                           .SelectMany(x => x.Initializer.InitializeDependencies());
     }
 
     internal Space GetSpace(Guid guid)
     {
-        return WorldContext.GlobalSpace.Id == guid
-            ? WorldContext.GlobalSpace
-            : _localSpaces.FirstOrDefault(x => x.Id == guid);
+        if (WorldContext.GlobalSpace?.Id == guid)
+            return WorldContext.GlobalSpace;
+
+        return _localSpaces.FirstOrDefault(x => x.Id == guid);
     }
 
     internal Space LoadLocalSpace(string path, Space rootSpace = null)
@@ -115,8 +159,11 @@ internal class SpacePool
 
     internal Space LoadSpace(string path, bool immediateBuild = true)
     {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Space file path cannot be null or empty.", nameof(path));
+
         Space space;
-        if (!File.Exists(path) || File.ReadAllBytes(path).Length == 0)
+        if (!File.Exists(path) || new FileInfo(path).Length == 0)
         {
             space = new Space(Guid.NewGuid())
             {
@@ -131,9 +178,10 @@ internal class SpacePool
         else
         {
             using var stream = File.Open(path, FileMode.Open, FileAccess.Read);
-
             space = EngineContext.Serializer.Read<Space>(stream);
-            if (space == null) throw new NullReferenceException();
+            if (space == null)
+                throw new InvalidOperationException($"Failed to deserialize Space from file: '{path}'.");
+
             space.Name = Path.GetFileNameWithoutExtension(path);
             space.Path = path;
         }
@@ -141,21 +189,32 @@ internal class SpacePool
         Debug.WriteLine($"Loading space: {space.Name} with id {space.Id}");
         if (immediateBuild)
             EngineContext.DISystem.BuildDependencies(space);
+
         return space;
     }
 
     internal void LoadSavedSpaces()
     {
-        foreach (var path in WorldSettings.Spaces) _localSpaces.Add(LoadSpace(path, false));
+        if (WorldSettings.Spaces == null) return;
 
-        foreach (var space in _localSpaces) EngineContext.DISystem.BuildDependencies(space);
+        foreach (var path in WorldSettings.Spaces)
+        {
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            _localSpaces.Add(LoadSpace(path, false));
+        }
+
+        foreach (var space in _localSpaces)
+            EngineContext.DISystem.BuildDependencies(space);
+
         SpaceTree.Create(_localSpaces);
     }
 
     internal void UnloadSpace(Space space)
     {
-        if (_localSpaces.Contains(space))
-            _localSpaces.Remove(space);
+        if (space == null) return;
+
+        _localSpaces.Remove(space);
+        _spaceFolders.Remove(space);
         SpaceTree.Detach(space);
         EngineContext.Destroyer.DestroyIn(space);
         EngineContext.EntityPool.UnregisterSpace(space);
@@ -163,14 +222,33 @@ internal class SpacePool
 
     internal void UnloadAllSpaces()
     {
-        var count = _localSpaces.Count;
-        for (var i = 0; i < count; i++) UnloadSpace(_localSpaces[i]);
-        UnloadSpace(WorldContext.GlobalSpace);
+        var spacesToUnload = _localSpaces.ToArray();
+        foreach (var space in spacesToUnload)
+        {
+            UnloadSpace(space);
+        }
+
+        if (WorldContext.GlobalSpace != null)
+        {
+            UnloadSpace(WorldContext.GlobalSpace);
+        }
     }
 
     internal void SaveSpace(Space space)
     {
-        using var stream = File.Open(space.Path, FileMode.OpenOrCreate, FileAccess.Write);
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot save a null Space.");
+
+        if (string.IsNullOrWhiteSpace(space.Path))
+            throw new InvalidOperationException($"Cannot save Space '{space.Name}' because its Path property is not set.");
+
+        var dir = Path.GetDirectoryName(space.Path);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        using var stream = File.Open(space.Path, FileMode.Create, FileAccess.Write);
         EngineContext.Serializer.Write(space, stream);
     }
 

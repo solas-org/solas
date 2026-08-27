@@ -24,7 +24,7 @@ public static class Command
 
     #region DI System
 
-    public static T AutoInject<T>(Space space) where T : Logic
+    public static T AutoInject<T>(Space space) where T : ILogic
     {
         return EngineContext.DISystem.AutoInject<T>(space);
     }
@@ -120,7 +120,7 @@ public static class Command
         EngineContext.DataSerializationRegistry.Register<T>(typeName);
     }
 
-    public static void RegisterLogicAdd<T>(string typeName) where T : Logic, new()
+    public static void RegisterLogicAdd<T>(string typeName) where T : ILogic, new()
     {
         EngineContext.LogicAddingRegistry.Register<T>(typeName);
     }

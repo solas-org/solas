@@ -1,6 +1,4 @@
-﻿using System.Buffers;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.CompilerServices;
 using Solas.Components;
 using Solas.ComponentUtils;
 using Solas.Interfaces;
@@ -32,11 +30,17 @@ internal class EntityPool
 
     internal void RegisterSpace(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot register a null Space in EntityPool.");
+
         _entitiesInSpaces.TryAdd(space, []);
     }
 
     internal void UnregisterSpace(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot unregister a null Space.");
+
         if (_entitiesInSpaces.TryGetValue(space, out var entities))
         {
             var array = entities.ToArray();
@@ -83,16 +87,23 @@ internal class EntityPool
         _isEnableds[id] = true;
         _reactiveProperties[id] = null;
 
-        _bitmasks[id] = [];
+        var totalChunks = ComponentRegistry.Count / 32 + 1;
+        _bitmasks[id] = new uint[totalChunks];
 
         return (id, version);
     }
 
     internal void LinkEntityToSpace(Entity entity)
     {
+        EnsureEntityAlive(entity);
+
         if (_entitiesInSpaces.TryGetValue(entity.CurrentSpace, out var list))
         {
             list.Add(entity);
+        }
+        else
+        {
+            throw new InvalidOperationException($"Space '{entity.CurrentSpace}' is not registered for Entity (ID: {entity.InternalId}).");
         }
     }
 
@@ -113,7 +124,7 @@ internal class EntityPool
 
         if (_spaces[id] != null && _entitiesInSpaces.TryGetValue(_spaces[id], out var list))
         {
-            list.Remove(entity);
+            FastRemove(list, entity);
         }
 
         _spaces[id] = null;
@@ -128,24 +139,47 @@ internal class EntityPool
         return id < _globalInternalIdCounter && _spaces[id] != null && _versions[id] == entity.Version;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureEntityAlive(Entity entity)
+    {
+        if (!IsAlive(entity))
+        {
+            throw new InvalidOperationException($"Entity (ID: {entity.InternalId}, Version: {entity.Version}) is dead or does not exist.");
+        }
+    }
+
     #endregion
 
     #region Properties Getters/Setters
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal Guid GetGuid(Entity e) => _guids[e.InternalId];
+    internal Guid GetGuid(Entity e)
+    {
+        EnsureEntityAlive(e);
+        return _guids[e.InternalId];
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal Space GetSpace(Entity e) => _spaces[e.InternalId];
+    internal Space GetSpace(Entity e)
+    {
+        EnsureEntityAlive(e);
+        return _spaces[e.InternalId];
+    }
 
     internal void SetSpace(Entity e, Space newSpace)
     {
+        EnsureEntityAlive(e);
+        if (newSpace == null)
+            throw new ArgumentNullException(nameof(newSpace), $"Cannot assign null Space to Entity (ID: {e.InternalId}).");
+
         uint id = e.InternalId;
         var oldSpace = _spaces[id];
         if (oldSpace == newSpace) return;
 
         if (oldSpace != null && _entitiesInSpaces.TryGetValue(oldSpace, out var oldList))
-            oldList.Remove(e);
+        {
+            FastRemove(oldList, e);
+        }
 
         _spaces[id] = newSpace;
         RegisterSpace(newSpace);
@@ -153,13 +187,22 @@ internal class EntityPool
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal EntityMetaData GetMetaData(Entity e) => _metaData[e.InternalId];
+    internal EntityMetaData GetMetaData(Entity e)
+    {
+        EnsureEntityAlive(e);
+        return _metaData[e.InternalId];
+    }
 
-    internal void SetMetaData(Entity e, EntityMetaData meta) => _metaData[e.InternalId] = meta;
+    internal void SetMetaData(Entity e, EntityMetaData meta)
+    {
+        EnsureEntityAlive(e);
+        _metaData[e.InternalId] = meta;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal ReactiveProperty<bool> GetIsEnabled(Entity e)
     {
+        EnsureEntityAlive(e);
         uint id = e.InternalId;
         ref var prop = ref _reactiveProperties[id];
 
@@ -172,34 +215,51 @@ internal class EntityPool
         return prop;
     }
 
+    private IData[] _dataBuffer = new IData[64];
+    private ILogic[] _logicBuffer = new ILogic[64];
+
     internal ReadOnlySpan<IData> GetDataSpan(Entity e)
     {
+        EnsureEntityAlive(e);
         if (!_componentPoolsInSpaces.TryGetValue(e.CurrentSpace, out var pools))
             return ReadOnlySpan<IData>.Empty;
 
-        var list = new List<IData>();
+        int count = 0;
         foreach (var pool in pools.Values)
         {
             if (pool.GetComponentFor(e) is IData data)
-                list.Add(data);
+            {
+                if (count >= _dataBuffer.Length)
+                {
+                    Array.Resize(ref _dataBuffer, _dataBuffer.Length * 2);
+                }
+                _dataBuffer[count++] = data;
+            }
         }
 
-        return CollectionsMarshal.AsSpan(list);
+        return new ReadOnlySpan<IData>(_dataBuffer, 0, count);
     }
 
-    internal ReadOnlySpan<Logic> GetLogicSpan(Entity e)
+    internal ReadOnlySpan<ILogic> GetLogicSpan(Entity e)
     {
+        EnsureEntityAlive(e);
         if (!_componentPoolsInSpaces.TryGetValue(e.CurrentSpace, out var pools))
-            return ReadOnlySpan<Logic>.Empty;
+            return ReadOnlySpan<ILogic>.Empty;
 
-        var list = new List<Logic>();
+        int count = 0;
         foreach (var pool in pools.Values)
         {
-            if (pool.GetComponentFor(e) is Logic logic)
-                list.Add(logic);
+            if (pool.GetComponentFor(e) is ILogic logic)
+            {
+                if (count >= _logicBuffer.Length)
+                {
+                    Array.Resize(ref _logicBuffer, _logicBuffer.Length * 2);
+                }
+                _logicBuffer[count++] = logic;
+            }
         }
 
-        return CollectionsMarshal.AsSpan(list);
+        return new ReadOnlySpan<ILogic>(_logicBuffer, 0, count);
     }
 
     #endregion
@@ -208,59 +268,71 @@ internal class EntityPool
 
     internal void AddData<T>(Entity e, T data) where T : IData
     {
+        EnsureEntityAlive(e);
+        if (data == null)
+            throw new ArgumentNullException(nameof(data), $"Cannot attach null Data of type '{typeof(T).Name}' to Entity (ID: {e.InternalId}).");
+
         AddReferences(data, e);
-        UpdateBitmask(e, typeof(T));
+        SetBit(e, typeof(T), true);
     }
 
     internal void RemoveData<T>(Entity e, T data) where T : IData
     {
+        EnsureEntityAlive(e);
         RemoveReferences(data, e);
-        UpdateBitmask(e, typeof(T));
+        SetBit(e, typeof(T), false);
     }
 
     internal T GetData<T>(Entity e) where T : IData
     {
+        EnsureEntityAlive(e);
         if (_componentPoolsInSpaces.TryGetValue(e.CurrentSpace, out var pools) &&
             pools.TryGetValue(typeof(T), out var pool))
         {
             return ((ComponentPool<T>)pool).Get(e);
         }
 
-        return default;
+        throw new KeyNotFoundException($"There is no Data of type '{typeof(T).Name}' attached to Entity (ID: {e.InternalId}) in Space '{e.CurrentSpace}'.");
     }
 
     #endregion
 
     #region Logic Methods
 
-    internal void AddLogic<T>(Entity e, T logic) where T : Logic
+    internal void AddLogic<T>(Entity e, T logic) where T : ILogic
     {
+        EnsureEntityAlive(e);
+        if (logic == null)
+            throw new ArgumentNullException(nameof(logic), $"Cannot attach null Logic of type '{typeof(T).Name}' to Entity (ID: {e.InternalId}).");
+
         AddReferences(logic, e);
-        UpdateBitmask(e, typeof(T));
+        SetBit(e, typeof(T), true);
     }
 
-    internal void RemoveLogic<T>(Entity e, T logic) where T : Logic
+    internal void RemoveLogic<T>(Entity e, T logic) where T : ILogic
     {
+        EnsureEntityAlive(e);
         RemoveReferences(logic, e);
-        UpdateBitmask(e, typeof(T));
+        SetBit(e, typeof(T), false);
     }
 
-    internal T GetLogic<T>(Entity e) where T : Logic
+    internal T GetLogic<T>(Entity e) where T : ILogic
     {
+        EnsureEntityAlive(e);
         if (_componentPoolsInSpaces.TryGetValue(e.CurrentSpace, out var pools) &&
             pools.TryGetValue(typeof(T), out var pool))
         {
             return ((ComponentPool<T>)pool).Get(e);
         }
 
-        return null;
+        throw new KeyNotFoundException($"There is no Logic of type '{typeof(T).Name}' attached to Entity (ID: {e.InternalId}) in Space '{e.CurrentSpace}'.");
     }
 
     #endregion
 
     #region Bitmask Management
 
-    private void UpdateBitmask(Entity entity, Type componentType)
+    private void SetBit(Entity entity, Type componentType, bool value)
     {
         uint id = entity.InternalId;
         var compId = ComponentRegistry.GetId(componentType);
@@ -268,14 +340,19 @@ internal class EntityPool
         var bitIndex = compId % 32;
 
         ref var mask = ref _bitmasks[id];
-        mask ??= [];
-
         if (chunkIndex >= mask.Length)
         {
-            Array.Resize(ref mask, chunkIndex + 1);
+            Array.Resize(ref mask, Math.Max(chunkIndex + 1, ComponentRegistry.Count / 32 + 1));
         }
 
-        mask[chunkIndex] |= 1u << bitIndex;
+        if (value)
+        {
+            mask[chunkIndex] |= 1u << bitIndex;
+        }
+        else
+        {
+            mask[chunkIndex] &= ~(1u << bitIndex);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -289,6 +366,9 @@ internal class EntityPool
 
     private ComponentPool<T> RegisterPool<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), $"Cannot register component pool of type '{typeof(T).Name}' for a null Space.");
+
         var type = typeof(T);
         if (!_componentPoolsInSpaces.TryGetValue(space, out var pools))
         {
@@ -315,7 +395,9 @@ internal class EntityPool
         var type = typeof(T);
         if (_componentPoolsInSpaces.TryGetValue(entity.CurrentSpace, out var pools) &&
             pools.TryGetValue(type, out var pool))
+        {
             pool.Remove(entity);
+        }
     }
 
     #endregion
@@ -324,11 +406,17 @@ internal class EntityPool
 
     internal IEnumerable<Entity> GetEntitiesIn(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get entities from a null Space.");
+
         return _entitiesInSpaces.TryGetValue(space, out var list) ? list : Array.Empty<Entity>();
     }
 
     internal IEnumerable<Entity> GetEntitiesIn(SpaceFolder spaceFolder)
     {
+        if (spaceFolder == null)
+            throw new ArgumentNullException(nameof(spaceFolder), "Cannot get entities from a null SpaceFolder.");
+
         if (!_entitiesInSpaces.TryGetValue(spaceFolder.Space, out var entities)) yield break;
 
         var ids = spaceFolder.EntityIds;
@@ -341,6 +429,9 @@ internal class EntityPool
 
     internal IEnumerable<Entity> GetEntitiesInAvailable(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get available entities from a null Space.");
+
         var availableSpaces = SpaceTree.GetAllAvailableSpacesFor(space);
         for (int i = 0; i < availableSpaces.Count; i++)
         {
@@ -354,59 +445,74 @@ internal class EntityPool
 
     internal IEnumerable<Entity> GetEntitiesWith(Space space, params Type[] types)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot filter entities in a null Space.");
+
         if (types == null || types.Length == 0) yield break;
-        if (!_entitiesInSpaces.TryGetValue(space, out var entities)) yield break;
-
-        var totalChunks = ComponentRegistry.Count / 32 + 1;
-        var filter = ArrayPool<uint>.Shared.Rent(totalChunks);
-        Array.Clear(filter, 0, totalChunks);
-
-        try
+        var filter = BuildFilter(types);
+        foreach (var entity in GetEntitiesWithFilter(space, filter))
         {
-            for (int i = 0; i < types.Length; i++)
-            {
-                var id = ComponentRegistry.GetId(types[i]);
-                filter[id / 32] |= 1u << (id % 32);
-            }
-
-            for (int i = 0; i < entities.Count; i++)
-            {
-                var mask = GetBitmask(entities[i].InternalId);
-                if (IsMatch(mask, filter, totalChunks))
-                    yield return entities[i];
-            }
-        }
-        finally
-        {
-            ArrayPool<uint>.Shared.Return(filter);
+            yield return entity;
         }
     }
 
     internal IEnumerable<Entity> GetEntitiesInAvailableWith(Space space, params Type[] types)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot filter available entities in a null Space.");
+
+        if (types == null || types.Length == 0) yield break;
+        var filter = BuildFilter(types);
         var availableSpaces = SpaceTree.GetAllAvailableSpacesFor(space);
+
         for (int i = 0; i < availableSpaces.Count; i++)
         {
-            foreach (var entity in GetEntitiesWith(availableSpaces[i], types))
+            foreach (var entity in GetEntitiesWithFilter(availableSpaces[i], filter))
             {
                 yield return entity;
             }
         }
     }
-
-    private static bool IsMatch(uint[] entityMask, uint[] filter, int filterLength)
+    
+    private IEnumerable<Entity> GetEntitiesWithFilter(Space space, uint[] filter)
     {
-        for (var i = 0; i < filterLength; i++)
+        if (!_entitiesInSpaces.TryGetValue(space, out var entities)) yield break;
+
+        for (int i = 0; i < entities.Count; i++)
+        {
+            var mask = GetBitmask(entities[i].InternalId);
+            if (IsMatch(mask, filter))
+                yield return entities[i];
+        }
+    }
+
+    private static bool IsMatch(uint[] entityMask, uint[] filter)
+    {
+        for (var i = 0; i < filter.Length; i++)
         {
             var entityChunk = i < entityMask.Length ? entityMask[i] : 0u;
             if ((entityChunk & filter[i]) != filter[i]) return false;
         }
-
         return true;
+    }
+    
+    private static uint[] BuildFilter(Type[] types)
+    {
+        var totalChunks = ComponentRegistry.Count / 32 + 1;
+        var filter = new uint[totalChunks];
+        for (int i = 0; i < types.Length; i++)
+        {
+            var id = ComponentRegistry.GetId(types[i]);
+            filter[id / 32] |= 1u << (id % 32);
+        }
+        return filter;
     }
 
     internal IEnumerable<Entity> GetEntitiesByType<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get entities by type from a null Space.");
+
         var type = typeof(T);
         if (_componentPoolsInSpaces.TryGetValue(space, out var pools) && pools.TryGetValue(type, out var value))
         {
@@ -419,6 +525,9 @@ internal class EntityPool
 
     internal IEnumerable<Entity> GetEntitiesByTypeInAvailable<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get available entities by type from a null Space.");
+
         var availableSpaces = SpaceTree.GetAllAvailableSpacesFor(space);
         for (int i = 0; i < availableSpaces.Count; i++)
         {
@@ -431,6 +540,9 @@ internal class EntityPool
 
     internal IEnumerable<T> GetComponentsByType<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get components by type from a null Space.");
+
         var type = typeof(T);
         if (_componentPoolsInSpaces.TryGetValue(space, out var pools) && pools.TryGetValue(type, out var value))
         {
@@ -443,6 +555,9 @@ internal class EntityPool
 
     internal IEnumerable<T> GetComponentsByTypeInAvailable<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get available components by type from a null Space.");
+
         var availableSpaces = SpaceTree.GetAllAvailableSpacesFor(space);
         for (int i = 0; i < availableSpaces.Count; i++)
         {
@@ -455,6 +570,9 @@ internal class EntityPool
 
     internal T GetComponentByType<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get component by type from a null Space.");
+
         var type = typeof(T);
         if (_componentPoolsInSpaces.TryGetValue(space, out var pools) && pools.TryGetValue(type, out var value))
         {
@@ -468,6 +586,9 @@ internal class EntityPool
 
     internal T GetComponentByTypeInAvailable<T>(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get available component by type from a null Space.");
+
         var availableSpaces = SpaceTree.GetAllAvailableSpacesFor(space);
         for (int i = 0; i < availableSpaces.Count; i++)
         {
@@ -480,6 +601,9 @@ internal class EntityPool
 
     internal IEnumerable<IComponentPool> GetComponentPoolsInSpace(Space space)
     {
+        if (space == null)
+            throw new ArgumentNullException(nameof(space), "Cannot get component pools from a null Space.");
+
         if (_componentPoolsInSpaces.TryGetValue(space, out var pools))
             return pools.Values;
         return [];
@@ -489,9 +613,26 @@ internal class EntityPool
 
     #region Runners Registration
 
-    internal void RegisterRunner(IUpdateRunner runner) => UpdateRunners.Add(runner);
-    internal void RegisterFixedRunner(IUpdateRunner runner) => FixedUpdateRunners.Add(runner);
-    internal void RegisterLateRunner(IUpdateRunner runner) => LateUpdateRunners.Add(runner);
+    internal void RegisterRunner(IUpdateRunner runner)
+    {
+        if (runner == null)
+            throw new ArgumentNullException(nameof(runner), "Cannot register a null IUpdateRunner.");
+        UpdateRunners.Add(runner);
+    }
+
+    internal void RegisterFixedRunner(IUpdateRunner runner)
+    {
+        if (runner == null)
+            throw new ArgumentNullException(nameof(runner), "Cannot register a null fixed IUpdateRunner.");
+        FixedUpdateRunners.Add(runner);
+    }
+
+    internal void RegisterLateRunner(IUpdateRunner runner)
+    {
+        if (runner == null)
+            throw new ArgumentNullException(nameof(runner), "Cannot register a null late IUpdateRunner.");
+        LateUpdateRunners.Add(runner);
+    }
 
     #endregion
 
@@ -513,6 +654,18 @@ internal class EntityPool
         Array.Resize(ref _bitmasks, newCapacity);
 
         _capacity = newCapacity;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool FastRemove(List<Entity> list, Entity entity)
+    {
+        int index = list.IndexOf(entity);
+        if (index < 0) return false;
+
+        int lastIndex = list.Count - 1;
+        list[index] = list[lastIndex];
+        list.RemoveAt(lastIndex);
+        return true;
     }
 
     #endregion

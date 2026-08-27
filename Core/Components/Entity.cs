@@ -59,7 +59,7 @@ public readonly record struct Entity : IDisposable, IToggleable, IReferenceable
     public ReactiveProperty<bool> IsEnabled => EngineContext.EntityPool.GetIsEnabled(this);
 
     public ReadOnlySpan<IData> Data => EngineContext.EntityPool.GetDataSpan(this);
-    public ReadOnlySpan<Logic> Logics => EngineContext.EntityPool.GetLogicSpan(this);
+    public ReadOnlySpan<ILogic> Logics => EngineContext.EntityPool.GetLogicSpan(this);
 
     public Guid GetSpaceId() => CurrentSpace?.Id ?? Guid.Empty;
 
@@ -87,9 +87,25 @@ public readonly record struct Entity : IDisposable, IToggleable, IReferenceable
         EngineContext.EntityPool.AddData(this, data);
         return data;
     }
+    
+    public T AddData<T>() where T : IData, new()
+    {
+        T data = new();
+        data.Entity = this;
+        EngineContext.EntityPool.AddData(this, data);
+        return data;
+    }
+    
 
     public void RemoveData<T>(T data) where T : IData
     {
+        EngineContext.EntityPool.RemoveData(this, data);
+        data.Dispose();
+    }
+    
+    public void RemoveData<T>() where T : IData
+    {
+        T data = GetData<T>();
         EngineContext.EntityPool.RemoveData(this, data);
         data.Dispose();
     }
@@ -102,21 +118,35 @@ public readonly record struct Entity : IDisposable, IToggleable, IReferenceable
     #endregion
 
     #region Logic Method Group
-
-    public T AddLogic<T>() where T : Logic, IInjectable, new()
+    
+    public T AddLogic<T>(T logic) where T : ILogic, new()
     {
-        var newLogic = new T { Entity = this };
-        EngineContext.EntityPool.AddLogic(this, newLogic);
-        return newLogic;
+        logic.Entity = this;
+        EngineContext.EntityPool.AddLogic(this, logic);
+        return logic;
     }
 
-    public void RemoveLogic<T>(T logic) where T : Logic, new()
+    public T AddLogic<T>() where T : ILogic, IInjectable, new()
+    {
+        T logic = new T { Entity = this };
+        EngineContext.EntityPool.AddLogic(this, logic);
+        return logic;
+    }
+    
+    public void RemoveLogic<T>(T logic) where T : ILogic, new()
     {
         EngineContext.EntityPool.RemoveLogic(this, logic);
         logic.Dispose();
     }
+    
+    public void RemoveLogic<T>() where T : ILogic, new()
+    {
+        T logic = GetLogic<T>();
+        EngineContext.EntityPool.RemoveLogic(this, logic);
+        logic.Dispose();
+    }
 
-    public T GetLogic<T>() where T : Logic
+    public T GetLogic<T>() where T : ILogic
     {
         return EngineContext.EntityPool.GetLogic<T>(this);
     }

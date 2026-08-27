@@ -6,7 +6,7 @@ namespace Solas.Systems;
 
 internal class DISystem
 {
-    private readonly Dictionary<Space, List<Logic>> _cache = [];
+    private readonly Dictionary<Space, List<ILogic>> _cache = [];
     private readonly List<(IInjectable, (Guid, Guid)[])> _injectables = [];
     private readonly Queue<(Guid, Guid)[]> _lastInjectables = [];
     internal ReadOnlySpan<(Guid, Guid)> LastInjectables => _lastInjectables.TryDequeue(out var result) ? result : [];
@@ -28,9 +28,9 @@ internal class DISystem
         _injectables.Clear();
     }
 
-    internal T AutoInject<T>(Space space) where T : Logic
+    internal T AutoInject<T>(Space space) where T : ILogic
     {
-        T result = null;
+        T result = default;
         var targetType = typeof(T);
 
         if (_cache.TryGetValue(space, out var logics))
