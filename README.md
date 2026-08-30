@@ -3,7 +3,7 @@
 </h3>
 <div align="center">
     
-[![Site](https://img.shields.io/badge/Engine%20site-orange)](https://nevskyv.github.io/SolasSite/)
+[![Site](https://img.shields.io/badge/Engine%20site-orange)](https://solas-org.github.io/solas-website/)
 [![NuGet Version](https://img.shields.io/nuget/v/Solas)](https://nuget.org/packages/Solas)
 [![Join our Telegram](https://img.shields.io/badge/Join_our-Telegram-blue?logo=telegram)](https://t.me/SolasEngine)
 [![Sponsor us](https://img.shields.io/badge/Sponsor%20us-pink)](https://pay.cloudtips.ru/p/65fe2c6c)
