@@ -30,19 +30,19 @@ dotnet new sls-console -o MyGame
 Создайте консольный проект и откройте файл с расширением csproj.
 В `PropertyGroup` необходимо указать свойство
 
-```csharp:../Scripts/Introduction/Console.csproj#3
+```csharp:../../Scripts/Introduction/Console.csproj#3
 ```
 Оно отвечает за класс сериализатор, который будет использовать при **работе** над проектом. Сериализатор, который отвечает за работу в билде, мы настроим позже.
 В `ItemGroup` необходимо указать ссылку на основной пакет Solas.
 
-```csharp:../Scripts/Introduction/Console.csproj#7
+```csharp:../../Scripts/Introduction/Console.csproj#7
 ```
 
 > Version="\*" означает самую последнюю версию движка на данный момент
 
 Затем необходимо написать **вне** блоков `PropertyGroup` и `ItemGroup` небольшой вспомогательный генератор, чтобы мы могли ссылаться на `SerializerName` в скриптах.
 
-```csharp:../Scripts/Introduction/Console.csproj#10-30
+```csharp:../../Scripts/Introduction/Console.csproj#10-30
 ```
 
 ### Программа
@@ -52,31 +52,31 @@ dotnet new sls-console -o MyGame
 > Сериализатор – это скрипт, который преобразует какие-либо данные в определнный формат, а в нашем случае еще и записывает в файловый поток. В Solas сериализатор используется для сохранения всего: пространств, префабов, ассетов. Причем сериализация может быть абсолютно любого формата, дальше мы это затронем подробнее.
 
 1. В главном методе запишите
-```csharp:../Scripts/Introduction/Main.cs#3-7
+```csharp:../../Scripts/Introduction/Main.cs#3-7
 ```
 Это создат сериализатор, который мы указывали ранее в .csproj файле.
 2. Затем создайте виртуальную файловую систему в **текущей директории**, чтобы обращаться к ней по короткому пути и сразу монтируем в нее необходимые директории: assets и engine
-```csharp:../Scripts/Introduction/Main.cs#16-20
+```csharp:../../Scripts/Introduction/Main.cs#16-20
 ```
 3. Установите VFS в качестве основной для движка.
-```csharp:../Scripts/Introduction/Main.cs#22
+```csharp:../../Scripts/Introduction/Main.cs#22
 ```
 4. Нужно убедиться, что директории существуют (в случае отсутсвия автоматически создаются)
-```csharp:../Scripts/Introduction/Main.cs#23-26
+```csharp:../../Scripts/Introduction/Main.cs#23-26
 ```
    И наконец, загрузите настройки движка
-```csharp:../Scripts/Introduction/Main.cs#27-28
+```csharp:../../Scripts/Introduction/Main.cs#27-28
 ```
 
 5. Возвращаемся в основную функцию! Вызовите только что созданную вами функцию
-```csharp:../Scripts/Introduction/Main.cs#8
+```csharp:../../Scripts/Introduction/Main.cs#8
 ```
 6. Создайте системы апдейта
-```csharp:../Scripts/Introduction/Main.cs#9
+```csharp:../../Scripts/Introduction/Main.cs#9
 ```
 7. Создайте мир игры
-```csharp:../Scripts/Introduction/Main.cs#10
+```csharp:../../Scripts/Introduction/Main.cs#10
 ```
 8. И, наконец, запускаем двигатель!
-```csharp:../Scripts/Introduction/Main.cs#11
+```csharp:../../Scripts/Introduction/Main.cs#11
 ```
