@@ -1,9 +1,9 @@
 ﻿<Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <CoreVer Condition="'$(CoreVer)' == ''">0.2.9</CoreVer>
-    <TransformVer Condition="'$(TransformVer)' == ''">0.2.7</TransformVer>
-    <SourceGeneratorsVer Condition="'$(SourceGeneratorsVer)' == ''">0.2.6</SourceGeneratorsVer>
+    <CoreVer Condition="'$(CoreVer)' == ''">0.2.11</CoreVer>
+    <TransformVer Condition="'$(TransformVer)' == ''">0.2.9</TransformVer>
+    <SourceGeneratorsVer Condition="'$(SourceGeneratorsVer)' == ''">0.2.12</SourceGeneratorsVer>
     <BuildVer Condition="'$(BuildVer)' == ''">0.2.1</BuildVer>
   </PropertyGroup>
   <ItemGroup>

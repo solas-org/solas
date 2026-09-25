@@ -13,7 +13,7 @@ env:
   MAIN_PACKAGE: ${{ vars.MAIN_PACKAGE }}
   
   NUGET_SOURCE: "https://api.nuget.org/v3/index.json"
-  GITHUB_SOURCE: "https://nuget.pkg.github.com/NevskyV/index.json"
+  GITHUB_SOURCE: "https://nuget.pkg.github.com/solas-org/index.json"
   NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
   GITHUB_API_KEY: ${{ secrets.GH_TOKEN }}
 

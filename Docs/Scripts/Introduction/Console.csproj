@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <SerializerName>Solas.Serialization.Json.EngineJsonSerializer, Core</SerializerName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Solas" Version="*" />
+    </ItemGroup>
+
+    <Target Name="GenerateSerializerConfig" BeforeTargets="BeforeCompile;CoreCompile">
+        <PropertyGroup>
+            <ConfigCode>
+                <![CDATA[
+                public record struct RuntimeConfig
+                {
+                    public static readonly string SerializerName = "$(SerializerName)"%3B
+                }
+                ]]>
+            </ConfigCode>
+        </PropertyGroup>
+
+        <WriteLinesToFile File="$(IntermediateOutputPath)BuildConfig.g.cs"
+                          Lines="$(ConfigCode)"
+                          Overwrite="true"
+                          WriteOnlyWhenDifferent="true" />
+
+        <ItemGroup>
+            <Compile Include="$(IntermediateOutputPath)BuildConfig.g.cs" />
+        </ItemGroup>
+    </Target>
+</Project>

@@ -1,6 +1,6 @@
 ﻿namespace Solas.ComponentUtils;
 
-public class DataProperty<T> : ReactiveProperty<T>
+public class DataProperty<T>(T @default = default) : ReactiveProperty<T>(@default)
 {
     private readonly List<DataModifier<T>> _modifiers = [];
 

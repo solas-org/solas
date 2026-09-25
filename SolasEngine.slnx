@@ -2,6 +2,7 @@
   <Project Path="Audio/Audio.csproj" />
   <Project Path="Build/Build.csproj" />
   <Project Path="Core/Core.csproj" />
+  <Project Path="Docs/Docs.csproj" />
   <Project Path="Editor/Editor.csproj" />
   <Project Path="Input/Input.csproj" />
   <Project Path="Physics/Physics.csproj" />

@@ -1,6 +1,6 @@
 ﻿namespace Solas.ComponentUtils;
 
-public class ReactiveProperty<T>
+public class ReactiveProperty<T>(T @default = default)
 {
     public Action<T> OnChange = delegate { };
 
@@ -15,5 +15,5 @@ public class ReactiveProperty<T>
             field = value;
             OnChange.Invoke(field);
         }
-    } = default;
+    } = @default;
 }
